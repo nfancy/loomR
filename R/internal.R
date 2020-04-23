@@ -18,7 +18,6 @@ chunkPoints <- function(data.size, chunk.size) {
   ))
 }
 
-
 # Convert sparse matrix pointers to column indicies
 #
 # A function to get the column (j) indices of a sparse matrix from the pointers (p)
@@ -26,6 +25,7 @@ chunkPoints <- function(data.size, chunk.size) {
 # @param p A vector of sparse matrix pointers
 #
 # @return A vector of column (j) indices
+# @author Josh O'Brien
 #
 # @examples
 # dat <- c(0, 0, 1, 4, 0, 2, 0, 9, 0)
@@ -38,6 +38,60 @@ PointerToIndex <- function(p) {
   dp <- diff(x = p)
   j <- rep.int(x = seq_along(along.with = dp), times = dp)
   return(j)
+}
+
+# Try to convert a character vector to bytes
+#
+# @param x A character vector
+#
+# @return the value of said string in bytes
+#
+#' @importFrom stringr str_extract
+#
+charToBytes <- function(x) {
+  x <- as.character(x = x)
+  patterns <- c('^\\d+[A-Z]?b?$', '^\\d\\.?\\d*e[\\+-]\\d+$')
+  x <- unlist(x = sapply(
+    X = patterns,
+    FUN = grep,
+    USE.NAMES = FALSE,
+    x = x,
+    perl = TRUE,
+    ignore.case = TRUE,
+    value = TRUE
+  ))
+  if (length(x = x) < 1) {
+    stop(paste(
+      "No valid character strings passed\n",
+      "values in 'x' must pass either the",
+      paste(patterns, collapse = '\n or '),
+      "regex pattern"
+    ))
+  }
+  x <- tolower(x = x)
+  bytes <- vapply(
+    X = x,
+    FUN = function(i) {
+      exp <- FALSE
+      mult.factor <- if (grepl(pattern = 'k', x = i)) {
+        1e3
+      } else if (grepl(pattern = 'm', x = i)) {
+        1e6
+      } else if (grepl(pattern = 'g', x = i)) {
+        1e9
+      } else {
+        1
+      }
+      if (grepl(pattern = patterns[2], x = i)) {
+        return(as.numeric(x = i))
+      }
+      dig <- as.numeric(x = str_extract(string = i, pattern = '\\d+'))
+      return(dig * mult.factor)
+    },
+    FUN.VALUE = numeric(length = 1L),
+    USE.NAMES = FALSE
+  )
+  return(bytes)
 }
 
 # Get HDF5 data types
@@ -55,9 +109,9 @@ PointerToIndex <- function(p) {
 getDtype <- function(x) {
   return(switch(
     EXPR = class(x = x),
-    'numeric' = h5types$double,
+    'numeric' = h5types$float,
     'integer' = h5types$int,
-    'character' = H5T_STRING$new(size = Inf),
+    'character' = H5T_STRING$new(size = max(nchar(x))),
     'logical' = H5T_LOGICAL$new(),
     stop(paste("Unknown data type:", class(x = x)))
   ))
@@ -115,7 +169,7 @@ validateLoom <- function(object) {
   )
   if (any(grepl(pattern = 'edges', x = root.groups))) {
     if (object$mode != 'r') {
-      cate("Moving edge groups to graph groups to conform to loom v2.0.1")
+      message("Moving edge groups to graph groups to conform to loom v2.0.1")
       edges <- grep(pattern = 'edges', x = root.groups, value = TRUE)
       for (group in edges) {
         graph <- gsub(pattern = 'edges', replacement = 'graphs', x = group)
@@ -215,7 +269,7 @@ is.actual_vector <- function(x) {
 # Check additions to /matrix
 #
 # @param x A list of vectors to add to /matrix
-# @param n The number of genes needed in each cell
+# @param n The number of features needed in each cell
 #
 # @return 'x' as a list of vectors
 #
@@ -239,12 +293,12 @@ check.matrix_data <- function(x, n) {
   if (!all(vector.check)) {
     stop('Each new cell added must be represented as a vector')
   }
-  # Ensure each new cell added has data for the number of genes present
+  # Ensure each new cell added has data for the number of features present
   for (i in 1:length(x = x)) {
     cell.add <- x[[i]]
     if (length(x = cell.add) > n) {
       stop(paste(
-        "Cannot add genes to a loom file, the maximum number of genes allowed is",
+        "Cannot add features to a loom file, the maximum number of features allowed is",
         n
       ))
     } else if (length(x = cell.add) < n) {
@@ -268,7 +322,7 @@ nCells.matrix_data <- function(x) {
 # Add missing cells to data added to /matrix
 #
 # @param x A list of vectors to add to /matrix
-# @param n The number of genes each cell needs
+# @param n The number of features each cell needs
 # @param m2 The number of cells being added to the loom file
 #
 # @return 'x' with the proper number of cells
@@ -283,7 +337,7 @@ addCells.matrix_data <- function(x, n, m2) {
 # Check additions to /layers
 #
 # @param x A list of matrices to add layers in /layers
-# @param n The number of genes needed for each layer
+# @param n The number of features needed for each layer
 # @param layers.names Names found in /layers
 #
 # @return 'x' as a list of matricies with 'n' rows for each layer present in /layers
@@ -310,7 +364,7 @@ check.layers <- function(x, n, layers.names) {
   } else if (length(x = x) < length(x = layers.names)) {
     x[(length(x = x) + 1):length(x = layers.names)] <- data.frame(rep.int(x = NA, times = n))
   }
-  # Ensure that we have all genes needed
+  # Ensure that we have all features needed
   for (i in 1:length(x = x)) {
     layer <- x[[i]]
     if (is.data.frame(x = layer)) {
@@ -323,7 +377,7 @@ check.layers <- function(x, n, layers.names) {
     }
     if (nrow(x = layer) > n) {
       stop(paste(
-        "Cannot add genes to a loom file, the maximum number of genes allowed is",
+        "Cannot add features to a loom file, the maximum number of features allowed is",
         n
       ))
     } else if (nrow(x = layer) < n) {
@@ -356,7 +410,7 @@ nCells.layers <- function(x) {
 # Add missing cells to data added to /matrix
 #
 # @param x A list of matricies to add to /layers
-# @param n The number of genes each cell needs
+# @param n The number of features each cell needs
 # @param m2 The number of cells being added to the loom file
 #
 # @return 'x' with the proper number of cells
@@ -452,7 +506,7 @@ addCells.col_attrs <- function(x, m2) {
 #
 #' @importFrom utils txtProgressBar
 #
-new.pb <- function() {
+newPB <- function() {
   return(txtProgressBar(style = 3, char = '='))
 }
 
@@ -500,15 +554,15 @@ break.consecutive <- function(x, max.length = NULL, min.length = NULL) {
   return(consecutive)
 }
 
-# Calculate nUMI and nGene
+# Calculate nUMI and nFeature
 #
 # @param object An object
 # @param chunk.size Number of cells to chunk over
-# @param is.expr Expression threshold for 'detected' gene. For most datasets, particularly UMI datasets, will be set to 0 (default).
+# @param is.expr Expression threshold for 'detected' feature. For most datasets, particularly UMI datasets, will be set to 0 (default).
 # If not, when initializing, this should be set to a level based on pre-normalized counts (i.e. require at least 5 counts to be treated as expresesd).
-# @param display.progres Display a progress bar?
+# @param verbose Display a progress bar?
 #
-# @return Stores nUMI in \code{col_attrs/nUMI}; stores nGene in \code{col_attrs/nGene}; will overwrite any existing datasets at these locations
+# @return Stores nUMI in \code{col_attrs/nUMI}; stores nFeature in \code{col_attrs/nFeature}; will overwrite any existing datasets at these locations
 #
 #' @importFrom Matrix rowSums
 #
@@ -516,60 +570,35 @@ calc.umi <- function(
   object,
   chunk.size = 1000,
   is.expr = 0,
-  display.progress = TRUE
+  verbose = TRUE
 ) {
-  if (display.progress) {
-    cate("Calculating number of UMIs per cell")
+  if (verbose) {
+    message("Calculating number of UMIs per cell")
   }
   object$apply(
-    name = 'col_attrs/nUMI',
+    name = 'col_attrs/nCount',
     FUN = rowSums,
     MARGIN = 2,
     chunk.size = chunk.size,
-    dataset.use = 'matrix',
+    dataset = 'matrix',
     overwrite = TRUE,
-    display.progress = display.progress
+    verbose = verbose
   )
-  if (display.progress) {
-    cate("Calculating number of genes expressed per cell")
-    cate("Using a threshold of", is.expr, "for gene expression")
+  if (verbose) {
+    message("Calculating number of features expressed per cell")
+    message("Using a threshold of ", is.expr, " for feature expression")
   }
   object$apply(
-    name = 'col_attrs/nGene',
+    name = 'col_attrs/nFeature',
     FUN = function(mat, is.expr) {
       return(rowSums(x = mat > is.expr))
     },
     MARGIN = 2,
     chunk.size = chunk.size,
-    dataset.use = 'matrix',
+    dataset = 'matrix',
     overwrite = TRUE,
-    display.progress = display.progress,
+    verbose = verbose,
     is.expr = is.expr
   )
   invisible(x = object)
-}
-
-# Cat with a new line
-#
-# @param ... Text to be output
-#
-catn <- function(...) {
-  x = list(...)
-  if (length(x = x)) {
-    if (!is.null(x = names(x = x)) && length(x = x) == 1 && names(x = x) == 'file') {
-      cat(...)
-    } else {
-      cat(..., '\n')
-    }
-  } else {
-    cat()
-  }
-}
-
-# Cat to stderr
-#
-# @param ... Text to be output
-#
-cate <- function(...) {
-  catn(..., file = stderr())
 }

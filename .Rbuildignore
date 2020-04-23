@@ -1,2 +1,14 @@
+# Ignore Rproject stuff
 ^.*\.Rproj$
 ^\.Rproj\.user$
+# Ignore Rdata files
+^.*\.Rda$
+^.*\.Rds$
+^.*\.Rdata$
+# Ignore loom files
+^.*\.loom$
+^.*\.h5$
+# Ignore VCS and CI stuff
+^\.git$
+^\.travis\.yml$
+^travis_setup.sh$

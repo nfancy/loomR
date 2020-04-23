@@ -5,7 +5,7 @@
 \title{Combine loom files}
 \usage{
 combine(looms, filename, chunk.size = 1000, order.by = NULL,
-  overwrite = FALSE, display.progress = TRUE, ...)
+  overwrite = FALSE, verbose = TRUE, chunk.dims = NULL, ...)
 }
 \arguments{
 \item{looms}{A list of \code{loom} objects or paths to loom files}
@@ -18,7 +18,11 @@ combine(looms, filename, chunk.size = 1000, order.by = NULL,
 
 \item{overwrite}{Overwrite \code{filename} if already exists?}
 
-\item{display.progress}{Display progress as we're copying over data}
+\item{verbose}{Display a progress bar as we're copying over data}
+
+\item{chunk.dims}{Chunk dimensions used for matrix; will be copied from first file by default}
+
+\item{...}{Ignored for now}
 }
 \value{
 A loom object connected to \code{filename}
